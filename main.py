@@ -6,20 +6,17 @@ import MySQLdb
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
-
+from db_queries import *
 from PyQt5.uic import loadUiType
+import numpy as np
 
 # from texttable import Texttable
 
-from GUICopy import Ui_MainWindow as Program
+# from GUICopy import Ui_MainWindow as Program
 
-# Program, _ = loadUiType('GUICopy.ui')
+Program, _ = loadUiType('GUICopy.ui')
 
-<<<<<<< HEAD
 my_db = MySQLdb.connect(host='localhost', user='root', password='159753852456', db='rc_company')
-=======
-my_db = MySQLdb.connect("auth params")
->>>>>>> 2089cd4b73d9542812777885670fb7d7b26e6100
 my_db.set_character_set('utf8')
 
 
@@ -37,9 +34,10 @@ class MainApp(QMainWindow, Program):
         self.user_actions()
         self.all_sub_types()
         self.input_restrict()
-        self.today_date.setText(str(datetime.today().date()))
+
         self.get_month()
         self.reset_sub()
+        self.search_name_completer()
 
     # *******************************
     #   Buttons
@@ -67,26 +65,22 @@ class MainApp(QMainWindow, Program):
         self.change_tab(order=0)
         self.all_sub.setChecked(True)
         self.single_customer_data.verticalHeader().show()
+        self.today_date.setText(str(datetime.today().date()))
 
     def change_tab_to_all_customers(self):
         self.change_tab(order=1)
-        self.show_all_customers()
+        # self.show_all_customers()
+        self.filter_all_customers()
         self.sub_numbers_on_filter()
 
     def sub_numbers_on_filter(self):
-        self.cur.execute("SELECT count(idcustomers_data) FROM customers_data")
-        data = self.cur.fetchone()
-        total = data[0] if data else '0'
+        total = get_customers_total_number()
         total_txt = ' [ ' + str(total) + ' ] ' + 'كل المشتركين'
 
-        self.cur.execute("SELECT count(idcustomers_data) FROM customers_data WHERE active = 'تم الدفع'")
-        data = self.cur.fetchone()
-        active = data[0] if data else '0'
+        active = get_customers_filtered_number(fltr='تم الدفع')
         active_txt = ' [ ' + str(active) + ' ] ' + 'تم تحصيل الاشتراك'
 
-        self.cur.execute("SELECT count(idcustomers_data) FROM customers_data WHERE active = 'لم يتم الدفع'")
-        data = self.cur.fetchone()
-        inactive = data[0] if data else '0'
+        inactive = get_customers_filtered_number(fltr='لم يتم الدفع')
         inactive_txt = ' [ ' + str(inactive) + ' ] ' + 'لم يتم تحصيل الاشتراك'
         self.all_sub.setText(total_txt)
         self.all_active_sub.setText(active_txt)
@@ -110,13 +104,33 @@ class MainApp(QMainWindow, Program):
         # Why here ?
         # self.id_calc()
 
+    def search_name_completer(self):
+        data = get_all_customers_data()
+        # Getting only the names
+        data = np.array(data)[:, 1]
+        # Convert the np.array to list
+        names = list(data)
+        name_completer = QCompleter(names)
+        name_completer.setFilterMode(Qt.MatchContains)
+        self.search_name.setCompleter(name_completer)
+
     # *******************************
     #   User actions
     # *******************************
     def user_actions(self):
         self.new_customer_sub_type.currentTextChanged.connect(self.unit_price)
         self.new_customer_sub_type.currentTextChanged.connect(self.total_price)
+        self.new_customer_sub_type.currentTextChanged.connect(self.special_sub)
         self.new_customer_sub_count.textChanged.connect(self.total_price)
+        self.filter_changed()
+        self.search_name.textChanged.connect(self.filter_customers_by_name)
+
+    def special_sub(self):
+        sub_type = self.new_customer_sub_type.currentText()
+        if sub_type == 'حاله خاصه':
+            self.new_customer_total.setReadOnly(False)
+        else:
+            self.new_customer_total.setReadOnly(True)
 
     def change_tab(self, order=0):
         self.mainTab.setCurrentIndex(order)
@@ -135,8 +149,7 @@ class MainApp(QMainWindow, Program):
     # *******************************
     def id_calc(self):
 
-        self.cur.execute("SELECT MAX(idcustomers_data) FROM customers_data WHERE idcustomers_data LIKE '11%' ")
-        rowcount = self.cur.fetchone()[0]
+        rowcount = get_last_id_by_branch(branch='بسيون')
         customer_id = int(rowcount) + 1 if rowcount else 110000
         return customer_id
 
@@ -154,15 +167,13 @@ class MainApp(QMainWindow, Program):
         added_time = str(datetime.today().date())
         months = self.new_customer_sub_month.text()
         active = 'تم الدفع'
-        if len(name) > 1:
-            self.cur.execute(
-                '''INSERT INTO customers_data (idcustomers_data, name,nickname,phone_number,address,landmark,national_id,
-                sub_type,sub_count, last_pay_date, months, active) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
-                (customer_id, name, nickname, phone, address, lank_mark, national_id, sub_type, sub_count, added_time,
-                 months, active))
+        total = self.new_customer_total.text()
 
-            self.db.commit()
-            # self.statusBar().showMessage(f"*تم التسجيل بنجاح* ")
+        if len(name) > 1:
+            insert_new_customer(
+                [customer_id, name, nickname, phone, address, lank_mark, national_id, sub_type, sub_count, total,
+                 added_time, months, active])
+
             msg_box = QMessageBox()
             msg_box.setWindowTitle("Success")
             msg_box.setText("تم التسجيل بنجاح")
@@ -170,6 +181,7 @@ class MainApp(QMainWindow, Program):
             msg_box.exec_()
 
             self.clear_text()
+
         else:
             msg_box = QMessageBox()
             msg_box.setWindowTitle("Error")
@@ -187,18 +199,65 @@ class MainApp(QMainWindow, Program):
         self.new_customer_id.setText('')
         self.new_customer_sub_count.setText('1')
 
-    def show_all_customers(self):
+    # def show_all_customers(self):
+    #
+    #     customers_data = get_all_customers_data()
+    #
+    #     if customers_data:
+    #         self.all_customers.setRowCount(0)
+    #         self.all_customers.insertRow(0)
+    #         for row, form in enumerate(customers_data):
+    #             customer_id = form[0]
+    #             full_name = (form[1] + f"({form[2]})") if len(form[2]) > 1 else form[1]
+    #             phone = form[3]
+    #             address = form[4] + f"({form[5]})" if len(form[5]) > 1 else form[4]
+    #             national_id = form[6]
+    #             sub_type = form[7] + f"({form[8]})"
+    #             date = form[9]
+    #             months = form[10]
+    #             active = form[11]
+    #
+    #             # Total calculation
+    #             total = 0
+    #             s_type = form[7]
+    #             s_count = form[8]
+    #
+    #             data = get_sub_price(sub=s_type)
+    #             unit_price = int(data[0]) if data else 0
+    #             if s_type == 'منزل' and s_count > 1:
+    #                 if s_count == 2:
+    #                     total = 25
+    #                 elif s_count >= 3:
+    #                     total = s_count * 10
+    #             else:
+    #                 total = s_count * unit_price
+    #
+    #             self.all_customers.setItem(row, 0, QTableWidgetItem(str(customer_id)))
+    #             self.all_customers.setItem(row, 1, QTableWidgetItem(str(full_name)))
+    #             self.all_customers.setItem(row, 2, QTableWidgetItem(str(phone)))
+    #             self.all_customers.setItem(row, 3, QTableWidgetItem(str(address)))
+    #             self.all_customers.setItem(row, 4, QTableWidgetItem(str(national_id)))
+    #             self.all_customers.setItem(row, 5, QTableWidgetItem(str(sub_type)))
+    #             self.all_customers.setItem(row, 6, QTableWidgetItem(str(total)))
+    #             self.all_customers.setItem(row, 7, QTableWidgetItem(str(date)))
+    #             self.all_customers.setItem(row, 8, QTableWidgetItem(str(months)))
+    #             self.all_customers.setItem(row, 9, QTableWidgetItem(str(active)))
+    #
+    #             row_pos = self.all_customers.rowCount()
+    #             self.all_customers.insertRow(row_pos)
 
-        # self.cur = self.db.cursor()
-        self.cur.execute(
-            f''' SELECT idcustomers_data, name, nickname, phone_number, address, landmark, national_id, sub_type, 
-                    sub_count, last_pay_date, months, active FROM customers_data ''')
+    def filter_all_customers(self):
+        customers_data = ''
+        if self.all_sub.isChecked():
+            customers_data = get_all_customers_data()
+        elif self.all_active_sub.isChecked():
+            customers_data = get_customers_with_filter(fltr='تم الدفع')
+        elif self.all_inactive_sub.isChecked():
+            customers_data = get_customers_with_filter(fltr='لم يتم الدفع')
 
-        customers_data = self.cur.fetchall()
-
+        self.all_customers.setRowCount(0)
+        self.all_customers.insertRow(0)
         if customers_data:
-            self.all_customers.setRowCount(0)
-            self.all_customers.insertRow(0)
             for row, form in enumerate(customers_data):
                 customer_id = form[0]
                 full_name = (form[1] + f"({form[2]})") if len(form[2]) > 1 else form[1]
@@ -206,24 +265,10 @@ class MainApp(QMainWindow, Program):
                 address = form[4] + f"({form[5]})" if len(form[5]) > 1 else form[4]
                 national_id = form[6]
                 sub_type = form[7] + f"({form[8]})"
-                date = form[9]
-                months = form[10]
-                active = form[11]
-
-                # Total calculation
-                total = 0
-                s_type = form[7]
-                s_count = form[8]
-                self.cur.execute('''SELECT price FROM subscription_types WHERE type=%s''', [s_type])
-                data = self.cur.fetchone()
-                unit_price = int(data[0]) if data else 0
-                if s_type == 'منزل' and s_count > 1:
-                    if s_count == 2:
-                        total = 25
-                    elif s_count >= 3:
-                        total = s_count * 10
-                else:
-                    total = s_count * unit_price
+                total_paid = form[9]
+                date = form[10]
+                months = form[11]
+                active = form[12]
 
                 self.all_customers.setItem(row, 0, QTableWidgetItem(str(customer_id)))
                 self.all_customers.setItem(row, 1, QTableWidgetItem(str(full_name)))
@@ -231,7 +276,7 @@ class MainApp(QMainWindow, Program):
                 self.all_customers.setItem(row, 3, QTableWidgetItem(str(address)))
                 self.all_customers.setItem(row, 4, QTableWidgetItem(str(national_id)))
                 self.all_customers.setItem(row, 5, QTableWidgetItem(str(sub_type)))
-                self.all_customers.setItem(row, 6, QTableWidgetItem(str(total)))
+                self.all_customers.setItem(row, 6, QTableWidgetItem(str(total_paid)))
                 self.all_customers.setItem(row, 7, QTableWidgetItem(str(date)))
                 self.all_customers.setItem(row, 8, QTableWidgetItem(str(months)))
                 self.all_customers.setItem(row, 9, QTableWidgetItem(str(active)))
@@ -239,68 +284,55 @@ class MainApp(QMainWindow, Program):
                 row_pos = self.all_customers.rowCount()
                 self.all_customers.insertRow(row_pos)
 
-    def filter_all_customers(self):
+    def filter_customers_by_name(self):
+        name = self.search_name.text()
+        if len(name)>0:
+            customers_data = get_customers_data_by_name(name)
 
-        filter_sub = self.sender()
-        if filter_sub.isChecked():
-            txt = filter_sub.text()
+            self.all_customers.setRowCount(0)
+            self.all_customers.insertRow(0)
+            if customers_data:
+                for row, form in enumerate(customers_data):
+                    customer_id = form[0]
+                    full_name = (form[1] + f"({form[2]})") if len(form[2]) > 1 else form[1]
+                    phone = form[3]
+                    address = form[4] + f"({form[5]})" if len(form[5]) > 1 else form[4]
+                    national_id = form[6]
+                    sub_type = form[7] + f"({form[8]})"
+                    total_paid = form[9]
+                    date = form[10]
+                    months = form[11]
+                    active = form[12]
 
-            if txt == 'كل المشتركين':
-                self.cur.execute(
-                    f''' SELECT idcustomers_data, name, nickname, phone_number, address, landmark, national_id, sub_type
-                         ,sub_count, last_pay_date, months, active FROM customers_data  ''')
-            elif txt == 'تم تحصيل الاشتراك':
-                self.cur.execute(
-                    f''' SELECT idcustomers_data, name, nickname, phone_number, address, landmark, national_id, sub_type
-                         ,sub_count, last_pay_date, months, active FROM customers_data WHERE active='تم الدفع' ''')
-            elif txt == 'لم يتم تحصيل الاشتراك':
-                self.cur.execute(
-                    f''' SELECT idcustomers_data, name, nickname, phone_number, address, landmark, national_id, sub_type
-                         ,sub_count, last_pay_date, months, active FROM customers_data WHERE active='لم يتم الدفع' ''')
+                    self.all_customers.setItem(row, 0, QTableWidgetItem(str(customer_id)))
+                    self.all_customers.setItem(row, 1, QTableWidgetItem(str(full_name)))
+                    self.all_customers.setItem(row, 2, QTableWidgetItem(str(phone)))
+                    self.all_customers.setItem(row, 3, QTableWidgetItem(str(address)))
+                    self.all_customers.setItem(row, 4, QTableWidgetItem(str(national_id)))
+                    self.all_customers.setItem(row, 5, QTableWidgetItem(str(sub_type)))
+                    self.all_customers.setItem(row, 6, QTableWidgetItem(str(total_paid)))
+                    self.all_customers.setItem(row, 7, QTableWidgetItem(str(date)))
+                    self.all_customers.setItem(row, 8, QTableWidgetItem(str(months)))
+                    self.all_customers.setItem(row, 9, QTableWidgetItem(str(active)))
 
-        customers_data = self.cur.fetchall()
-        self.all_customers.setRowCount(0)
-        self.all_customers.insertRow(0)
-        if customers_data:
-            for row, form in enumerate(customers_data):
-                customer_id = form[0]
-                full_name = form[1] + f"({form[2]})"
-                phone = form[3]
-                address = form[4] + f"({form[5]})"
-                national_id = form[6]
-                sub_type = form[7] + f"({form[8]})"
-                date = form[9]
-                months = form[10]
-                active = form[11]
-
-                self.all_customers.setItem(row, 0, QTableWidgetItem(str(customer_id)))
-                self.all_customers.setItem(row, 1, QTableWidgetItem(str(full_name)))
-                self.all_customers.setItem(row, 2, QTableWidgetItem(str(phone)))
-                self.all_customers.setItem(row, 3, QTableWidgetItem(str(address)))
-                self.all_customers.setItem(row, 4, QTableWidgetItem(str(national_id)))
-                self.all_customers.setItem(row, 5, QTableWidgetItem(str(sub_type)))
-                self.all_customers.setItem(row, 6, QTableWidgetItem(str(date)))
-                self.all_customers.setItem(row, 7, QTableWidgetItem(str(months)))
-                self.all_customers.setItem(row, 8, QTableWidgetItem(str(active)))
-
-                row_pos = self.all_customers.rowCount()
-                self.all_customers.insertRow(row_pos)
+                    row_pos = self.all_customers.rowCount()
+                    self.all_customers.insertRow(row_pos)
+        else:
+            self.filter_all_customers()
 
     def all_sub_types(self):
-        self.cur.execute('''SELECT type FROM subscription_types ''')
-        data = self.cur.fetchall()
-        self.new_customer_sub_type.clear()
+        data = get_all_sub_types()
         if data:
+            self.new_customer_sub_type.clear()
             for name in data:
                 self.new_customer_sub_type.addItem(name[0])
             self.unit_price()
 
     def unit_price(self):
         sub_type = self.new_customer_sub_type.currentText().strip()
-        self.cur.execute('''SELECT price FROM subscription_types WHERE type=%s''', [sub_type])
-        data = self.cur.fetchone()
+        data = get_sub_price(sub=sub_type)
         if data:
-            self.new_customer_unit_price.setText(str(data[0]))
+            self.new_customer_unit_price.setText(str(data))
 
     def total_price(self):
         sub_type = self.new_customer_sub_type.currentText().strip()
@@ -321,8 +353,7 @@ class MainApp(QMainWindow, Program):
 
     def search_by_id(self):
         customer_id = self.customer_id.text()
-        self.cur.execute('''SELECT * FROM customers_data WHERE idcustomers_data=%s''', [customer_id])
-        data = self.cur.fetchone()
+        data = get_customer_data_by_id(customer_id=customer_id)
         # single_customer_data
 
         if data:
@@ -346,9 +377,9 @@ class MainApp(QMainWindow, Program):
 
             s_type = data[7]
             s_count = int(data[8])
-            self.cur.execute('''SELECT price FROM subscription_types WHERE type=%s''', [s_type])
-            data = self.cur.fetchone()
-            unit_price = int(data[0]) if data else 0
+
+            data = get_sub_price(sub=s_type)
+            unit_price = int(data)
             total = 0
             if s_type == 'منزل' and s_count > 1:
                 if s_count == 2:
@@ -380,19 +411,16 @@ class MainApp(QMainWindow, Program):
 
     def save_csv(self):
         name = QFileDialog.getSaveFileName(self, 'Save File')[0]
-        print(name)
         month = month_dict[int(datetime.today().date().month)]
+        data = ''
         if self.all_sub.isChecked():
-            self.cur.execute('''SELECT * FROM customers_data''')
+            data = get_all_customers_data()
         elif self.all_active_sub.isChecked():
-            self.cur.execute('''SELECT * FROM customers_data WHERE active ='تم الدفع' ''')
+            data = get_customers_with_filter(fltr='تم الدفع')
         elif self.all_inactive_sub.isChecked():
-            self.cur.execute('''SELECT * FROM customers_data WHERE active ='لم يتم الدفع' ''')
-
+            data = get_customers_filtered_number(fltr='لم يتم الدفع')
         columns = ['الكود', 'الاسم', 'اسم الشهره', 'رقم التليفون', 'العنوان', 'علامه مميزة', 'الرقم القومي',
                    'وصف المكان', 'العدد', 'تاريخ اخر تحصيل', 'الشهر', 'نشط']
-
-        data = self.cur.fetchall()
 
         # Convert to Data frame
         df = pd.DataFrame(list(data), columns=columns)
@@ -402,8 +430,7 @@ class MainApp(QMainWindow, Program):
         for row, col in enumerate(data):
             s_type = col[7]
             s_count = int(col[8])
-            self.cur.execute('''SELECT price FROM subscription_types WHERE type=%s''', [s_type])
-            data = self.cur.fetchone()
+            data = get_sub_price(s_type)
             unit_price = int(data[0]) if data else 0
             total = 0
             if s_type == 'منزل' and s_count > 1:
@@ -431,8 +458,7 @@ class MainApp(QMainWindow, Program):
     def new_pill(self):
         customer_id = self.customer_id.text()
         sub_month = self.sub_month.currentText()
-        self.cur.execute('''SELECT months FROM customers_data WHERE idcustomers_data=%s''', [customer_id])
-        months = self.cur.fetchone()[0]
+        months = get_customer_one_attr(customer_id=customer_id, attr='months')
         months_list = months.split('+')
 
         if sub_month not in months_list:
@@ -442,10 +468,8 @@ class MainApp(QMainWindow, Program):
                 months = f'{sub_month}+{months_list[0]}+{months_list[1]}'
             else:
                 months = sub_month
-        print(months)
-        self.cur.execute('''UPDATE customers_data SET months =%s WHERE idcustomers_data=%s''', [months, customer_id])
-        self.db.commit()
-        # self.statusBar().showMessage(f"*تم التسجيل بنجاح* ")
+
+        update_customer_one_attr(customer_id=customer_id, attr='months', value=months)
         msg_box = QMessageBox()
         msg_box.setWindowTitle("Success")
         msg_box.setText("تم التسجيل بنجاح")
@@ -457,8 +481,7 @@ class MainApp(QMainWindow, Program):
     def customer_last_month(self):
         customer_id = self.customer_id.text()
         sub_month = self.sub_month.currentText()
-        self.cur.execute('''SELECT months FROM customers_data WHERE idcustomers_data=%s''', [customer_id])
-        months = self.cur.fetchone()[0]
+        months = get_customer_one_attr(customer_id=customer_id, attr='months')
         months_list = months.split('+')
         last_month = months_list[-1]
         if last_month != sub_month:
@@ -467,8 +490,9 @@ class MainApp(QMainWindow, Program):
     def reset_sub(self):
         global reset_indicator
         day = int(datetime.today().date().day)
+
         if day >= 25 and reset_indicator:
-            self.cur.execute('''UPDATE customers_data SET active = 'لم يتم الدفع' ''')
+            reset_all_customers_sub()
             reset_indicator = False
         if day < 25:
             reset_indicator = True
@@ -477,10 +501,8 @@ class MainApp(QMainWindow, Program):
 
     def search_for_edit(self):
         customer_id = self.search_edit_id.text()
-        self.cur.execute('''SELECT * FROM customers_data WHERE idcustomers_data=%s''', [customer_id])
-        data = self.cur.fetchone()
+        data = get_customer_data_by_id(customer_id=customer_id)
         # single_customer_data
-
         if data:
             name = data[1]
             nickname = data[2]
@@ -512,12 +534,9 @@ class MainApp(QMainWindow, Program):
         sub_count = int(self.edit_c_sub_count.text().strip())
 
         if len(name) > 1:
-            self.cur.execute(
-                '''UPDATE customers_data SET name=%s, nickname=%s, phone_number=%s, address=%s, landmark=%s, 
-                national_id=%s, sub_type=%s, sub_count=%s WHERE idcustomers_data=%s''',
-                (name, nickname, phone, address, lank_mark, national_id, sub_type, sub_count, customer_id))
+            update_customer_data(
+                [name, nickname, phone, address, lank_mark, national_id, sub_type, sub_count, customer_id])
 
-            self.db.commit()
             # self.statusBar().showMessage(f"*تم التسجيل بنجاح* ")
             msg_box = QMessageBox()
             msg_box.setWindowTitle("Success")
