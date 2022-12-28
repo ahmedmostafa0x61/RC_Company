@@ -9,15 +9,21 @@ from PyQt5.QtGui import *
 from db_queries import *
 from PyQt5.uic import loadUiType
 import numpy as np
-
-# from texttable import Texttable
+from sql_param import sql_param
 
 # from GUICopy import Ui_MainWindow as Program
 
 Program, _ = loadUiType('GUICopy.ui')
 
-my_db = MySQLdb.connect(host='localhost', user='root', password='159753852456', db='rc_company')
+host = sql_param.get('HOST')
+username = sql_param.get('USERNAME')
+password = sql_param.get('PASSWORD')
+database = sql_param.get('DATABASE')
+
+my_db = MySQLdb.connect(host=host, user=username, password=password, db=database)
 my_db.set_character_set('utf8')
+
+cur = my_db.cursor()
 
 
 class MainApp(QMainWindow, Program):
