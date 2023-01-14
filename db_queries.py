@@ -1,9 +1,6 @@
 import MySQLdb
-
-my_db = MySQLdb.connect(host='localhost', user='root', password='159753852456', db='rc_company')
-my_db.set_character_set('utf8')
-
-cur = my_db.cursor()
+from sql_param import sql_param
+from main import my_db, cur
 
 
 def get_customers_total_number():
@@ -13,6 +10,28 @@ def get_customers_total_number():
     cur.execute("SELECT count(idcustomers_data) FROM customers_data")
     data = cur.fetchone()
     return data[0] if data else '0'
+
+
+def get_customers_total_number_by_sub(sub_type):
+    """
+    :param: str: subscription type
+    :return: Total Customers number per one subscription type
+    """
+    cur.execute("SELECT count(idcustomers_data) FROM customers_data WHERE sub_type= %s", [sub_type])
+    data = cur.fetchone()
+    return data[0] if data else '0'
+
+
+def get_house_total_stat_by_num(house_num):
+    """
+    :param house_num: int: number of houses per one sub
+    :return: tuple: (total_sub, total_income)
+    """
+    cur.execute(
+        "SELECT count(idcustomers_data), SUM(total_paid) FROM customers_data WHERE sub_type= 'منزل' AND sub_count=%s",
+        [house_num])
+    data = cur.fetchone()
+    return data
 
 
 def get_customers_filtered_number(fltr):
@@ -59,12 +78,32 @@ def insert_new_customer(data):
 def get_all_customers_data():
     """
     :return: tuple of all customers data
+
     """
     cur.execute(
         f''' SELECT * FROM customers_data ''')
 
     data = cur.fetchall()
     return data
+
+
+def get_total_income():
+    """
+    :return: total income
+    """
+    cur.execute('''SELECT SUM(total_paid) from customers_data ''')
+    data = cur.fetchone()
+    return data[0] if data else '0'
+
+
+def get_total_income_by_type(sub_type):
+    """
+    :param sub_type: str : subsctiption type
+    :return: total income for one subsctiption type
+    """
+    cur.execute(f'''SELECT SUM(total_paid) from customers_data WHERE sub_type = %s''', [sub_type])
+    data = cur.fetchone()
+    return data[0] if data else '0'
 
 
 def get_all_sub_types():

@@ -39,11 +39,13 @@ class MainApp(QMainWindow, Program):
         self.main_buttons()
         self.user_actions()
         self.all_sub_types()
+        self.unit_price()
         self.input_restrict()
 
         self.get_month()
         self.reset_sub()
         self.search_name_completer()
+        self.stat_all_totals()
 
     # *******************************
     #   Buttons
@@ -56,6 +58,7 @@ class MainApp(QMainWindow, Program):
         self.all_customers_pb.clicked.connect(self.change_tab_to_all_customers)
         self.reg_sub_pb.clicked.connect(lambda: self.change_tab(order=2))
         self.edit_customer_pb.clicked.connect(lambda: self.change_tab(order=3))
+        self.statics_pb.clicked.connect(lambda: self.change_tab(order=4))
         self.cancel.clicked.connect(lambda: self.clear_text())
         self.customer_search_pb.clicked.connect(self.search_by_id)
         self.save_customers_data.clicked.connect(self.save_csv)
@@ -72,6 +75,7 @@ class MainApp(QMainWindow, Program):
         self.all_sub.setChecked(True)
         self.single_customer_data.verticalHeader().show()
         self.today_date.setText(str(datetime.today().date()))
+        self.stat_house_groupBox.setVisible(False)
 
     def change_tab_to_all_customers(self):
         self.change_tab(order=1)
@@ -130,6 +134,18 @@ class MainApp(QMainWindow, Program):
         self.new_customer_sub_count.textChanged.connect(self.total_price)
         self.filter_changed()
         self.search_name.textChanged.connect(self.filter_customers_by_name)
+
+        self.stat_sub_type.currentTextChanged.connect(self.stat_one_sub_total)
+        self.stat_sub_type.currentTextChanged.connect(self.stat_house_selected)
+        self.stat_house_num.valueChanged.connect(self.stat_by_house_count)
+
+    def stat_house_selected(self):
+        sub_type = self.stat_sub_type.currentText()
+        if sub_type == 'منزل':
+            self.stat_house_groupBox.setVisible(True)
+            self.stat_by_house_count()
+        else:
+            self.stat_house_groupBox.setVisible(False)
 
     def special_sub(self):
         sub_type = self.new_customer_sub_type.currentText()
@@ -292,7 +308,7 @@ class MainApp(QMainWindow, Program):
 
     def filter_customers_by_name(self):
         name = self.search_name.text()
-        if len(name)>0:
+        if len(name) > 0:
             customers_data = get_customers_data_by_name(name)
 
             self.all_customers.setRowCount(0)
@@ -330,9 +346,10 @@ class MainApp(QMainWindow, Program):
         data = get_all_sub_types()
         if data:
             self.new_customer_sub_type.clear()
+            self.stat_sub_type.clear()
             for name in data:
                 self.new_customer_sub_type.addItem(name[0])
-            self.unit_price()
+                self.stat_sub_type.addItem(name[0])
 
     def unit_price(self):
         sub_type = self.new_customer_sub_type.currentText().strip()
@@ -567,6 +584,27 @@ class MainApp(QMainWindow, Program):
             msg_box.setStandardButtons(QMessageBox.Ok)
             msg_box.exec_()
 
+    def stat_all_totals(self):
+        total_subs = get_customers_total_number()
+        self.stat_all_sub_count.setText(str(total_subs))
+        total_income = get_total_income()
+        self.stat_all_sub_paid.setText(str(total_income))
+
+    def stat_one_sub_total(self):
+        sub_type = self.stat_sub_type.currentText()
+        total_num = get_customers_total_number_by_sub(sub_type)
+        total_income = get_total_income_by_type(sub_type)
+        self.stat_sub_total.setText(str(total_num))
+        self.stat_sub_paid.setText(str(total_income))
+
+    def stat_by_house_count(self):
+        houses = self.stat_house_num.value()
+        data = get_house_total_stat_by_num(houses)
+        count = str(data[0])
+        income = str(data[1])
+        self.stat_house_subs.setText(count)
+        self.stat_house_paid.setText(income)
+
 
 if __name__ == '__main__':
     month_dict = {1: 'يناير', 2: 'فبراير', 3: 'مارس', 4: 'ابريل', 5: 'مايو', 6: 'يونيو', 7: 'يوليه', 8: 'اغسطس',
@@ -574,8 +612,28 @@ if __name__ == '__main__':
     reset_indicator = False
 
     app = QApplication(sys.argv)
+    # Create Loading Screen
+    splash_pix = QPixmap(r'pics\\logo.jpg')
+    splash = QSplashScreen(splash_pix)
+    splash.showMessage("Loading.....", Qt.AlignBottom, Qt.black)
+
+    # Set the font size of the text
+    font = QFont()
+    font.setPixelSize(14)
+    font.setUnderline(True)
+    font.setBold(True)
+    splash.setFont(font)
+
+    # Show the loading screen
+    splash.show()
+    app.processEvents()
+
+    # Main app
     window = MainApp()
     window.setWindowTitle('RC Clients System')
     window.setWindowIcon(QIcon(r'pics\\logo.ico'))
+
+    # Close the loading screen and show the main window
+    splash.finish(window)
     window.show()
     app.exec_()
